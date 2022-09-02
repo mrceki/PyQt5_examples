@@ -113,7 +113,7 @@ class Ui_MainWindow(object):
         self.doubleSpinBox_6.setSingleStep(0.005)
         self.doubleSpinBox_6.setObjectName("doubleSpinBox_6")
         self.gridLayout_2.addWidget(self.doubleSpinBox_6, 2, 1, 1, 1)
-        self.pushButton = QtWidgets.QPushButton(self.tab, clicked= lambda: self.main())
+        self.pushButton = QtWidgets.QPushButton(self.tab, clicked= lambda: self.pose())
         font = QtGui.QFont()
         font.setFamily("Roboto Lt")
         font.setPointSize(12)
@@ -454,7 +454,7 @@ class Ui_MainWindow(object):
         self.gridLayout_5.addWidget(self.label_5, 0, 2, 1, 1)
         self.gridLayout_6.addLayout(self.gridLayout_5, 0, 1, 1, 1)
         self.gridLayout_7.addLayout(self.gridLayout_6, 0, 0, 1, 1)
-        self.pushButton_2 = QtWidgets.QPushButton(self.tab_2)
+        self.pushButton_2 = QtWidgets.QPushButton(self.tab_2, clicked= lambda: self.joint())
         font = QtGui.QFont()
         font.setFamily("Roboto Lt")
         font.setPointSize(14)
@@ -533,7 +533,7 @@ class Ui_MainWindow(object):
                 self.horizontalSlider_6.setValue(0)
                 self.spinBox_6.setValue(0)
 
-    def main(self, args=None):
+    def pose(self, args=None):
 
         rclpy.init(args=args)#args=args
 
@@ -570,7 +570,57 @@ class Ui_MainWindow(object):
         moveit2.wait_until_executed()
         rclpy.shutdown()
         #exit(0)
-    
+    def joint(self, args=None):
+        rclpy.init(args=args)
+
+        # Create node for this example
+        node = Node("ex_joint_goal")
+
+        # Declare parameter for joint positions
+        node.declare_parameter(
+                "joint_positions",
+                [
+                self.spinBox.value()*22/1260,
+                self.spinBox_2.value()*22/1260,
+                self.spinBox_3.value()*22/1260,
+                self.spinBox_4.value()*22/1260,
+                self.spinBox_5.value()*22/1260,
+                self.spinBox_6.value()*22/1260,
+                ],
+        )
+
+        # Create callback group that allows execution of callbacks in parallel without restrictions
+        callback_group = ReentrantCallbackGroup()
+
+        # Create MoveIt 2 interface
+        moveit2 = MoveIt2(
+                node=node,
+                joint_names=sr80.joint_names(),
+                base_link_name=sr80.base_link_name(),
+                end_effector_name=sr80.end_effector_name(),
+                group_name=sr80.MOVE_GROUP_ARM,
+                callback_group=callback_group,
+        )
+
+        # Spin the node in background thread(s)
+        executor = rclpy.executors.MultiThreadedExecutor(2)
+        executor.add_node(node)
+        executor_thread = Thread(target=executor.spin, daemon=True, args=())
+        executor_thread.start()
+
+        # Get parameter
+        joint_positions = (
+                node.get_parameter("joint_positions").get_parameter_value().double_array_value
+        )
+
+        # Move to joint configuration
+        node.get_logger().info(f"Moving to {{joint_positions: {list(joint_positions)}}}")
+        moveit2.move_to_configuration(joint_positions)
+        moveit2.wait_until_executed()
+
+        rclpy.shutdown()
+
+
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     MainWindow = QtWidgets.QMainWindow()
